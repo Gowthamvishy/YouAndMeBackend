@@ -60,4 +60,15 @@ public class FileSharerService {
     public String getFilePathForPort(int port) {
         return availableFiles.get(port);
     }
+
+     public void cleanupPort(int port, String filePath) {
+        availableFiles.remove(port);
+        try {
+            Files.deleteIfExists(Paths.get(filePath));
+            System.out.println("Cleaned up file and closed port: " + port);
+        } catch (IOException e) {
+            System.err.println("Error cleaning up file: " + e.getMessage());
+        }
+    }
+    
 }
