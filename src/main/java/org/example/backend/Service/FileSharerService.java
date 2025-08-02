@@ -11,6 +11,8 @@ import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Iterator;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -44,7 +46,7 @@ public class FileSharerService {
         int port;
         ServerSocket serverSocket;
         while (true) {
-            port = UploadUtils.generateCode();
+            port = UploadUtils.generateCode(); // Unique access code generation
             try {
                 serverSocket = new ServerSocket(port);
                 if (availableFiles.putIfAbsent(port, filePath.toString()) == null) {
@@ -54,12 +56,11 @@ public class FileSharerService {
                     serverSocket.close();
                 }
             } catch (IOException e) {
-                // Port might be in use, ignore and retry
+                // Port might be in use, retry with a different code
             }
         }
 
         fileTransferService.startFileServer(serverSocket, filePath.toString(), port, availableFiles);
-
         return port;
     }
 
@@ -72,29 +73,37 @@ public class FileSharerService {
         portLastUsed.remove(port);
         try {
             Files.deleteIfExists(Paths.get(filePath));
-            System.out.println("Cleaned up file and closed port: " + port);
+            System.out.println("[Cleanup] File deleted and port closed: " + port);
         } catch (IOException e) {
-            System.err.println("Error cleaning up file: " + e.getMessage());
+            System.err.println("[Cleanup Error] Could not delete file for port " + port + ": " + e.getMessage());
         }
     }
 
-    // Call this from the server handler when a download is accessed
     public void updatePortUsage(int port) {
         portLastUsed.put(port, System.currentTimeMillis());
     }
 
-    // Clean inactive ports every 1 minute
+    // Check every 1 minute for inactive ports and clean them up
     @Scheduled(fixedRate = 60_000)
     public void cleanUpInactivePorts() {
         long now = System.currentTimeMillis();
-        for (Integer port : availableFiles.keySet()) {
-            Long lastUsed = portLastUsed.get(port);
-            if (lastUsed != null && now - lastUsed > INACTIVITY_TIMEOUT) {
+        System.out.println("[Scheduler] Checking for inactive ports...");
+
+        Iterator<Map.Entry<Integer, Long>> iterator = portLastUsed.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<Integer, Long> entry = iterator.next();
+            int port = entry.getKey();
+            long lastUsed = entry.getValue();
+
+            if (now - lastUsed > INACTIVITY_TIMEOUT) {
                 String filePath = availableFiles.get(port);
                 if (filePath != null) {
                     cleanupPort(port, filePath);
+                    iterator.remove();
                 }
             }
         }
+
+       // System.out.println("[Scheduler] Cleanup check complete. Active ports: " + availableFiles.size());
     }
-}
+        }
