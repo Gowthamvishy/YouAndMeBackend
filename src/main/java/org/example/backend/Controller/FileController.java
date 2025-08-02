@@ -62,4 +62,28 @@ public class FileController {
                 .body(resource);
     }
 
+     @DeleteMapping("/cleanup/{port}")
+    public ResponseEntity<?> cleanupPort(@PathVariable int port) {
+        String filePath = fileSharerService.getFilePathForPort(port);
+        if (filePath == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Port not active.");
+        }
+
+        fileSharerService.cleanupPort(port, filePath);
+        return ResponseEntity.ok("Port and file cleaned up.");
+    }
+
+    @PostMapping("/cleanup/{port}")
+    public ResponseEntity<?> cleanUpTabClose(@PathVariable int port) {
+        System.out.println("Cleanup");
+
+        String filePath = fileSharerService.getFilePathForPort(port);
+        if (filePath == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Port not active.");
+        }
+
+        fileSharerService.cleanupPort(port, filePath);
+        return ResponseEntity.ok("Port and file cleaned up.");
+    }
+
 }
