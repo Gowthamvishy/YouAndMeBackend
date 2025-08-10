@@ -40,21 +40,7 @@ public class FileController {
         }
     }
 
-    @GetMapping("/download/{port}")
-    public ResponseEntity<byte[]> downloadFile(@PathVariable int port) {
-        byte[] fileBytes = fileSharerService.getFileBytesByPort(port);
-        String filename = fileSharerService.getFilenameByPort(port);
-        String contentType = fileSharerService.getContentTypeByPort(port);
-
-        if (fileBytes == null || filename == null) {
-            return ResponseEntity.notFound().build();
-        }
-
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                .header(HttpHeaders.CONTENT_TYPE, contentType != null ? contentType : "application/octet-stream")
-                .body(fileBytes);
-    }
+    
 
     @DeleteMapping("/cleanup/{port}")
     public ResponseEntity<?> cleanupPort(@PathVariable int port) {
@@ -73,22 +59,29 @@ public class FileController {
         }
     }
 
-    @GetMapping("/download/{port}")
+
+@GetMapping("/download/{port}")
 public ResponseEntity<byte[]> downloadFile(@PathVariable int port) {
-    // Get file info from your service
-    byte[] fileBytes = fileSharerService.getFileBytesByPort(port);
-    String filename = fileSharerService.getFilenameByPort(port);
-    String contentType = fileSharerService.getContentTypeByPort(port);
+    try {
+        byte[] fileBytes = fileSharerService.getFileBytesByPort(port);
+        String filename = fileSharerService.getFilenameByPort(port);
+        String contentType = fileSharerService.getContentTypeByPort(port);
 
-    if (fileBytes == null || filename == null) {
-        return ResponseEntity.notFound().build();
+        if (fileBytes == null || filename == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, contentType != null ? contentType : "application/octet-stream")
+                .body(fileBytes);
+
+    } catch (IOException e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(null);
     }
-
-    return ResponseEntity.ok()
-        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-        .header(HttpHeaders.CONTENT_TYPE, contentType != null ? contentType : "application/octet-stream")
-        .body(fileBytes);
 }
+
     
 
     @DeleteMapping("/cleanup/{port}")
