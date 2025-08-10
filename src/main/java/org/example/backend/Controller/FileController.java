@@ -7,6 +7,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.*;
+import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -40,15 +42,22 @@ public class FileController {
     }
 
     @GetMapping("/download/{port}")
-    public ResponseEntity<?> downloadFile(@PathVariable int port) {
-        String fileUrl = fileSharerService.getFilePathForPort(port);
-        if (fileUrl == null) {
-            return ResponseEntity.notFound().build();
-        }
-        return ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.LOCATION, fileUrl)
-                .build();
+public ResponseEntity<byte[]> downloadFile(@PathVariable int port) {
+    // Get file info from your service
+    byte[] fileBytes = fileSharerService.getFileBytesByPort(port);
+    String filename = fileSharerService.getFilenameByPort(port);
+    String contentType = fileSharerService.getContentTypeByPort(port);
+
+    if (fileBytes == null || filename == null) {
+        return ResponseEntity.notFound().build();
     }
+
+    return ResponseEntity.ok()
+        .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+        .header(HttpHeaders.CONTENT_TYPE, contentType != null ? contentType : "application/octet-stream")
+        .body(fileBytes);
+}
+    
 
     @DeleteMapping("/cleanup/{port}")
     public ResponseEntity<?> cleanupPort(@PathVariable int port) {
