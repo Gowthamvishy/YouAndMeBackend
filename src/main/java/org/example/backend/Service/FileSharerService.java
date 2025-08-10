@@ -71,11 +71,13 @@ public class FileSharerService {
     if (info == null) return null;
 
     // Generate signed URL (no sign() method call)
-    String signedUrl = cloudinary.url()
-        .resourceType("raw")
-        .type("upload")
-        .secure(true)
-        .generate(info.publicId);
+  String signedUrl = cloudinary.url()
+    .resourceType("raw")
+    .type("upload")
+    .secure(true)
+    .sign(true)          // <-- add this to generate a signed URL
+    .generate(info.publicId);
+
 
     URL url = new URL(signedUrl);
     HttpURLConnection connection = (HttpURLConnection) url.openConnection();
