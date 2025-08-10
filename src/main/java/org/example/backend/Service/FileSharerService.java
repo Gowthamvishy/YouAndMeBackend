@@ -66,26 +66,26 @@ public class FileSharerService {
     }
 
     public byte[] getFileBytesByPort(int port) throws IOException {
-        StoredFileInfo info = availableFiles.get(port);
-        if (info == null) return null;
+    StoredFileInfo info = availableFiles.get(port);
+    if (info == null) return null;
 
-        // Generate signed URL for raw resource dynamically
-        String signedUrl = cloudinary.url()
-                .resourceType("raw")
-                .secure(true)
-                .signed(true)
-                .generate(info.publicId);
+    // Generate signed URL to access the file securely from Cloudinary
+    String signedUrl = cloudinary.url()
+            .resourceType("raw")
+            .signUrl(true)
+            .generate(info.publicId);
 
-        URL url = new URL(signedUrl);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("GET");
-        connection.setDoInput(true);
-        connection.connect();
+    URL url = new URL(signedUrl);
+    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+    connection.setRequestMethod("GET");
+    connection.setDoInput(true);
+    connection.connect();
 
-        try (InputStream inputStream = connection.getInputStream()) {
-            return IOUtils.toByteArray(inputStream);
-        }
+    try (InputStream inputStream = connection.getInputStream()) {
+        return IOUtils.toByteArray(inputStream);
     }
+}
+
 
     public String getFilenameByPort(int port) {
         StoredFileInfo info = availableFiles.get(port);
