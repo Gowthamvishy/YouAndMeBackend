@@ -66,35 +66,28 @@ public class FileSharerService {
         return port;
     }
 
-    public byte[] getFileBytesByPort(int port) throws IOException {
-        StoredFileInfo info = availableFiles.get(port);
-        if (info == null) return null;
+   public byte[] getFileBytesByPort(int port) throws IOException {
+    StoredFileInfo info = availableFiles.get(port);
+    if (info == null) return null;
 
-        // Generate signed URL for the raw file on Cloudinary
-        String signedUrl = cloudinary.url()
-                .resourceType("raw")
-                .type("upload")
-                .sign(true)
-                .generate(info.publicId);
+    // Generate signed URL (no sign() method call)
+    String signedUrl = cloudinary.url()
+        .resourceType("raw")
+        .type("upload")
+        .secure(true)
+        .generate(info.publicId);
 
-        System.out.println("[FileSharerService] Generated signed URL: " + signedUrl);
+    URL url = new URL(signedUrl);
+    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+    connection.setRequestMethod("GET");
+    connection.setDoInput(true);
+    connection.connect();
 
-        URL url = new URL(signedUrl);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("GET");
-        connection.setDoInput(true);
-        connection.connect();
-
-        int responseCode = connection.getResponseCode();
-        if (responseCode != HttpURLConnection.HTTP_OK) {
-            String message = connection.getResponseMessage();
-            throw new IOException("Failed to download file. HTTP response code: " + responseCode + " message: " + message);
-        }
-
-        try (InputStream inputStream = connection.getInputStream()) {
-            return IOUtils.toByteArray(inputStream);
-        }
+    try (InputStream inputStream = connection.getInputStream()) {
+        return IOUtils.toByteArray(inputStream);
     }
+}
+
 
     public String getFilenameByPort(int port) {
         StoredFileInfo info = availableFiles.get(port);
