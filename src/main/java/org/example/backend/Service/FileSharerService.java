@@ -74,8 +74,7 @@ public class FileSharerService {
   String signedUrl = cloudinary.url()
     .resourceType("raw")
     .type("upload")
-    .secure(true)
-    .sign(true)          // <-- add this to generate a signed URL
+    .secure(true)        // <-- add this to generate a signed URL
     .generate(info.publicId);
 
 
