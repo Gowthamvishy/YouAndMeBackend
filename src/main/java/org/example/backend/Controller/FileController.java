@@ -1,14 +1,13 @@
 package org.example.backend.Controller;
 
 import org.example.backend.Service.FileSharerService;
+import org.example.backend.Service.FileSharerService.StoredFileInfo;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.http.*;
-import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -34,6 +33,39 @@ public class FileController {
         try {
             int port = fileSharerService.offerFile(file);
             Map<String, Integer> response = Collections.singletonMap("port", port);
+            return ResponseEntity.ok(response);
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Could not upload the file: " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/download/{port}")
+    public ResponseEntity<byte[]> downloadFile(@PathVariable int port) {
+        byte[] fileBytes = fileSharerService.getFileBytesByPort(port);
+        String filename = fileSharerService.getFilenameByPort(port);
+        String contentType = fileSharerService.getContentTypeByPort(port);
+
+        if (fileBytes == null || filename == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .header(HttpHeaders.CONTENT_TYPE, contentType != null ? contentType : "application/octet-stream")
+                .body(fileBytes);
+    }
+
+    @DeleteMapping("/cleanup/{port}")
+    public ResponseEntity<?> cleanupPort(@PathVariable int port) {
+        StoredFileInfo storedFileInfo = fileSharerService.getStoredValue(port);
+        if (storedFileInfo == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Port not active or file does not exist.");
+        }
+        fileSharerService.cleanupPort(port, storedFileInfo);
+        return ResponseEntity.ok("Port and file cleaned up.");
+    }
+}
             return ResponseEntity.ok(response);
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
