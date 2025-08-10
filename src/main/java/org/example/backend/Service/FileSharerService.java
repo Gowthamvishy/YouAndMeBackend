@@ -30,11 +30,13 @@ public class FileSharerService {
     // Store all info needed to serve file properly
     private static class StoredFileInfo {
         String publicId;
+        String secureUrl;
         String originalFilename;
         String contentType;
 
-        StoredFileInfo(String publicId, String originalFilename, String contentType) {
+        StoredFileInfo(String publicId, String secureUrl, String originalFilename, String contentType) {
             this.publicId = publicId;
+            this.secureUrl = secureUrl;
             this.originalFilename = originalFilename;
             this.contentType = contentType;
         }
@@ -49,10 +51,11 @@ public class FileSharerService {
                 ));
 
         String publicId = (String) uploadResult.get("public_id");
+        String secureUrl = (String) uploadResult.get("secure_url");
         String originalFilename = file.getOriginalFilename();
         String contentType = file.getContentType();
 
-        StoredFileInfo info = new StoredFileInfo(publicId, originalFilename, contentType);
+        StoredFileInfo info = new StoredFileInfo(publicId, secureUrl, originalFilename, contentType);
 
         int port;
         while (true) {
@@ -65,27 +68,21 @@ public class FileSharerService {
         return port;
     }
 
-public byte[] getFileBytesByPort(int port) throws IOException {
-    StoredFileInfo info = availableFiles.get(port);
-    if (info == null) return null;
+    public byte[] getFileBytesByPort(int port) throws IOException {
+        StoredFileInfo info = availableFiles.get(port);
+        if (info == null) return null;
 
-    // Construct the file URL to download directly from Cloudinary
-    String signedUrl = cloudinary.url()
-        .resourceType("raw")
-        .type("upload")
-        .generate(info.publicId);
+        // Use the stored secureUrl (public or accessible) to download
+        URL url = new URL(info.secureUrl);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+        connection.setDoInput(true);
+        connection.connect();
 
-    URL url = new URL(signedUrl);
-    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-    connection.setRequestMethod("GET");
-    connection.setDoInput(true);
-    connection.connect();
-
-    try (InputStream inputStream = connection.getInputStream()) {
-        return IOUtils.toByteArray(inputStream);
+        try (InputStream inputStream = connection.getInputStream()) {
+            return IOUtils.toByteArray(inputStream);
+        }
     }
-}
-
 
     public String getFilenameByPort(int port) {
         StoredFileInfo info = availableFiles.get(port);
