@@ -65,17 +65,15 @@ public class FileSharerService {
         return port;
     }
 
-    public byte[] getFileBytesByPort(int port) throws IOException {
+public byte[] getFileBytesByPort(int port) throws IOException {
     StoredFileInfo info = availableFiles.get(port);
     if (info == null) return null;
 
-    // Generate signed URL to access the file securely from Cloudinary
-  String signedUrl = cloudinary.url()
-    .resourceType("raw")
-    .type("upload")
-    .sign(true)
-    .generate(info.publicId);
-
+    // Construct the file URL to download directly from Cloudinary
+    String signedUrl = cloudinary.url()
+        .resourceType("raw")
+        .type("upload")
+        .generate(info.publicId);
 
     URL url = new URL(signedUrl);
     HttpURLConnection connection = (HttpURLConnection) url.openConnection();
