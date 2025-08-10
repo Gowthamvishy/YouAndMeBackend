@@ -54,9 +54,8 @@
 <dependency>
     <groupId>com.cloudinary</groupId>
     <artifactId>cloudinary</artifactId>
-    <version>1.39.1</version> <!-- Or latest available -->
+    <version>1.29.0</version>
 </dependency>
-
 
     </dependencies>
 
