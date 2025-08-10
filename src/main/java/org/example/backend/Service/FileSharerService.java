@@ -70,10 +70,12 @@ public class FileSharerService {
     if (info == null) return null;
 
     // Generate signed URL to access the file securely from Cloudinary
-    String signedUrl = cloudinary.url()
-            .resourceType("raw")
-            .signUrl(true)
-            .generate(info.publicId);
+  String signedUrl = cloudinary.url()
+    .resourceType("raw")
+    .type("upload")
+    .sign(true)
+    .generate(info.publicId);
+
 
     URL url = new URL(signedUrl);
     HttpURLConnection connection = (HttpURLConnection) url.openConnection();
