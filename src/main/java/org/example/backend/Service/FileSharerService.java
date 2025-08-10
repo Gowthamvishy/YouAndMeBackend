@@ -30,19 +30,18 @@ public class FileSharerService {
     // Store all info needed to serve file properly
     private static class StoredFileInfo {
         String publicId;
-        String secureUrl;
         String originalFilename;
         String contentType;
 
-        StoredFileInfo(String publicId, String secureUrl, String originalFilename, String contentType) {
+        StoredFileInfo(String publicId, String originalFilename, String contentType) {
             this.publicId = publicId;
-            this.secureUrl = secureUrl;
             this.originalFilename = originalFilename;
             this.contentType = contentType;
         }
     }
 
     public int offerFile(MultipartFile file) throws IOException {
+        // Upload file as raw resource type to Cloudinary
         Map uploadResult = cloudinary.uploader().upload(file.getBytes(),
                 ObjectUtils.asMap(
                         "resource_type", "raw",
@@ -51,11 +50,10 @@ public class FileSharerService {
                 ));
 
         String publicId = (String) uploadResult.get("public_id");
-        String secureUrl = (String) uploadResult.get("secure_url");
         String originalFilename = file.getOriginalFilename();
         String contentType = file.getContentType();
 
-        StoredFileInfo info = new StoredFileInfo(publicId, secureUrl, originalFilename, contentType);
+        StoredFileInfo info = new StoredFileInfo(publicId, originalFilename, contentType);
 
         int port;
         while (true) {
@@ -72,12 +70,26 @@ public class FileSharerService {
         StoredFileInfo info = availableFiles.get(port);
         if (info == null) return null;
 
-        // Use the stored secureUrl (public or accessible) to download
-        URL url = new URL(info.secureUrl);
+        // Generate signed URL for the raw file on Cloudinary
+        String signedUrl = cloudinary.url()
+                .resourceType("raw")
+                .type("upload")
+                .sign(true)
+                .generate(info.publicId);
+
+        System.out.println("[FileSharerService] Generated signed URL: " + signedUrl);
+
+        URL url = new URL(signedUrl);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod("GET");
         connection.setDoInput(true);
         connection.connect();
+
+        int responseCode = connection.getResponseCode();
+        if (responseCode != HttpURLConnection.HTTP_OK) {
+            String message = connection.getResponseMessage();
+            throw new IOException("Failed to download file. HTTP response code: " + responseCode + " message: " + message);
+        }
 
         try (InputStream inputStream = connection.getInputStream()) {
             return IOUtils.toByteArray(inputStream);
