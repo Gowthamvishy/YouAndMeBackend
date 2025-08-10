@@ -70,20 +70,27 @@ public class FileSharerService {
     }
 
     public byte[] getFileBytesByPort(int port) throws IOException {
-        StoredFileInfo info = availableFiles.get(port);
-        if (info == null) return null;
+    StoredFileInfo info = availableFiles.get(port);
+    if (info == null) return null;
 
-        // Download the file bytes from Cloudinary URL
-        URL url = new URL(info.fileUrl);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("GET");
-        connection.setDoInput(true);
-        connection.connect();
+    // Generate fresh signed URL for secure download
+    String signedUrl = cloudinary.url()
+            .resourceType("raw")
+            .secure(true)
+            .signed(true)   // very important: signed URL to avoid 401
+            .generate(info.publicId);
 
-        try (InputStream inputStream = connection.getInputStream()) {
-            return IOUtils.toByteArray(inputStream);
-        }
+    URL url = new URL(signedUrl);
+    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+    connection.setRequestMethod("GET");
+    connection.setDoInput(true);
+    connection.connect();
+
+    try (InputStream inputStream = connection.getInputStream()) {
+        return IOUtils.toByteArray(inputStream);
     }
+}
+
 
     public String getFilenameByPort(int port) {
         StoredFileInfo info = availableFiles.get(port);
