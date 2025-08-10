@@ -51,15 +51,11 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
-
-             <dependency>
+<dependency>
     <groupId>com.cloudinary</groupId>
-    <artifactId>cloudinary-http44</artifactId>
-    <version>1.39.1</version> <!-- or latest available -->
+    <artifactId>cloudinary</artifactId>
+    <version>1.39.1</version> <!-- Or latest available -->
 </dependency>
-
-
-
 
 
     </dependencies>
