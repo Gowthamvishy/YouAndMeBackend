@@ -1,6 +1,3 @@
-backend:
-
-
 package org.example.backend.Service;
 
 import com.cloudinary.Cloudinary;
@@ -137,5 +134,3 @@ public class FileSharerService {
     }
 }
 
-
-change this fucker
