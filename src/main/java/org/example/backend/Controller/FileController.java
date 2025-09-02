@@ -24,49 +24,61 @@ public class FileController {
         this.fileSharerService = fileSharerService;
     }
 
-    // ✅ Upload multiple files under one port
     @PostMapping("/upload")
-    public ResponseEntity<?> uploadFiles(@RequestParam("files") MultipartFile[] files) {
-        if (files.length == 0) {
-            return ResponseEntity.badRequest().body("Please select at least one file to upload.");
+    public ResponseEntity<?> uploadFile(@RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("Please select a file to upload.");
         }
         try {
-            int port = fileSharerService.offerFiles(files);
-            Map<String, Object> response = Map.of(
-                    "port", port,
-                    "files", fileSharerService.listFiles(port)
-            );
+            int port = fileSharerService.offerFile(file);
+            Map<String, Integer> response = Collections.singletonMap("port", port);
             return ResponseEntity.ok(response);
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Could not upload files: " + e.getMessage());
+                    .body("Could not upload the file: " + e.getMessage());
         }
     }
 
-    // ✅ Download a specific file by port + filename
-    @GetMapping("/download/{port}/{filename}")
-    public ResponseEntity<?> downloadFile(@PathVariable int port, @PathVariable String filename) {
+    @GetMapping("/download/{port}")
+    public ResponseEntity<?> downloadFile(@PathVariable int port) {
         try {
-            byte[] fileBytes = fileSharerService.getFileBytes(port, filename);
-            if (fileBytes == null) {
+            byte[] fileBytes = fileSharerService.getFileBytesByPort(port);
+            String filename = fileSharerService.getFilenameByPort(port);
+            String contentType = fileSharerService.getContentTypeByPort(port);
+
+            if (fileBytes == null || filename == null) {
+                System.err.println("[Download] File not found for port: " + port);
                 return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                        .body("File not found for port: " + port + " and filename: " + filename);
+                        .body("File not found or expired for port: " + port);
             }
+
+            System.out.println("[Download] Serving file: " + filename + " for port: " + port);
 
             return ResponseEntity.ok()
                     .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
-                    .header(HttpHeaders.CONTENT_TYPE, "application/octet-stream")
+                    .header(HttpHeaders.CONTENT_TYPE, contentType != null ? contentType : "application/octet-stream")
                     .body(fileBytes);
 
         } catch (IOException e) {
+            System.err.println("[Download Error] IOException for port " + port + ": " + e.getMessage());
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Failed to download file: " + e.getMessage());
+                    .body("Failed to download file due to IO error: " + e.getMessage());
+        } catch (Exception e) {
+            System.err.println("[Download Error] Unexpected error for port " + port + ": " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Unexpected error: " + e.getMessage());
         }
     }
 
     @DeleteMapping("/cleanup/{port}")
     public ResponseEntity<?> cleanupPort(@PathVariable int port) {
-        fileSharerService.cleanupPort(port);
-        return ResponseEntity.ok("Port and files cleaned up.");
+        var storedValue = fileSharerService.getStoredValue(port);
+        if (storedValue == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("Port not active.");
+        }
+        fileSharerService.cleanupPort(port, storedValue);
+        return ResponseEntity.ok("Port and file cleaned up.");
     }
 }
