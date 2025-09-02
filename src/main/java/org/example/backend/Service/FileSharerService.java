@@ -1,3 +1,6 @@
+backend:
+
+
 package org.example.backend.Service;
 
 import com.cloudinary.Cloudinary;
@@ -20,14 +23,14 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class FileSharerService {
 
-    private final ConcurrentHashMap<Integer, StoredPortInfo> availablePorts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<Integer, StoredFileInfo> availableFiles = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<Integer, Long> portLastUsed = new ConcurrentHashMap<>();
     private final long INACTIVITY_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 
     @Autowired
     private Cloudinary cloudinary;
 
-    // Port can hold multiple files
+    // Store all info needed to serve file properly
     private static class StoredFileInfo {
         String publicId;
         String originalFilename;
@@ -40,33 +43,25 @@ public class FileSharerService {
         }
     }
 
-    private static class StoredPortInfo {
-        Map<String, StoredFileInfo> files = new ConcurrentHashMap<>();
-    }
+    public int offerFile(MultipartFile file) throws IOException {
+        // Upload file as raw resource type to Cloudinary
+        Map uploadResult = cloudinary.uploader().upload(file.getBytes(),
+                ObjectUtils.asMap(
+                        "resource_type", "raw",
+                        "type", "upload",
+                        "filename_override", file.getOriginalFilename()
+                ));
 
-    public int offerFiles(MultipartFile[] files) throws IOException {
-        StoredPortInfo portInfo = new StoredPortInfo();
+        String publicId = (String) uploadResult.get("public_id");
+        String originalFilename = file.getOriginalFilename();
+        String contentType = file.getContentType();
 
-        for (MultipartFile file : files) {
-            Map uploadResult = cloudinary.uploader().upload(file.getBytes(),
-                    ObjectUtils.asMap(
-                            "resource_type", "raw",
-                            "type", "upload",
-                            "filename_override", file.getOriginalFilename()
-                    ));
-
-            String publicId = (String) uploadResult.get("public_id");
-            String originalFilename = file.getOriginalFilename();
-            String contentType = file.getContentType();
-
-            StoredFileInfo info = new StoredFileInfo(publicId, originalFilename, contentType);
-            portInfo.files.put(originalFilename, info);
-        }
+        StoredFileInfo info = new StoredFileInfo(publicId, originalFilename, contentType);
 
         int port;
         while (true) {
             port = UploadUtils.generateCode();
-            if (availablePorts.putIfAbsent(port, portInfo) == null) {
+            if (availableFiles.putIfAbsent(port, info) == null) {
                 portLastUsed.put(port, System.currentTimeMillis());
                 break;
             }
@@ -74,54 +69,49 @@ public class FileSharerService {
         return port;
     }
 
-    public byte[] getFileBytes(int port, String filename) throws IOException {
-        StoredPortInfo portInfo = availablePorts.get(port);
-        if (portInfo == null) return null;
+   public byte[] getFileBytesByPort(int port) throws IOException {
+    StoredFileInfo info = availableFiles.get(port);
+    if (info == null) return null;
 
-        StoredFileInfo info = portInfo.files.get(filename);
-        if (info == null) return null;
+    // Generate signed URL (no sign() method call)
+  String signedUrl = cloudinary.url()
+    .resourceType("raw")
+    .type("upload")
+    .secure(true)        // <-- add this to generate a signed URL
+    .generate(info.publicId);
 
-        String signedUrl = cloudinary.url()
-                .resourceType("raw")
-                .type("upload")
-                .secure(true)
-                .generate(info.publicId);
 
-        URL url = new URL(signedUrl);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("GET");
-        connection.setDoInput(true);
-        connection.connect();
+    URL url = new URL(signedUrl);
+    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+    connection.setRequestMethod("GET");
+    connection.setDoInput(true);
+    connection.connect();
 
-        try (InputStream inputStream = connection.getInputStream()) {
-            return IOUtils.toByteArray(inputStream);
-        }
+    try (InputStream inputStream = connection.getInputStream()) {
+        return IOUtils.toByteArray(inputStream);
+    }
+}
+
+
+    public String getFilenameByPort(int port) {
+        StoredFileInfo info = availableFiles.get(port);
+        return info != null ? info.originalFilename : null;
     }
 
-    public Map<String, String> listFiles(int port) {
-        StoredPortInfo portInfo = availablePorts.get(port);
-        if (portInfo == null) return null;
-
-        Map<String, String> response = new ConcurrentHashMap<>();
-        for (String filename : portInfo.files.keySet()) {
-            response.put(filename, filename);
-        }
-        return response;
+    public String getContentTypeByPort(int port) {
+        StoredFileInfo info = availableFiles.get(port);
+        return info != null ? info.contentType : null;
     }
 
-    public void cleanupPort(int port) {
-        StoredPortInfo portInfo = availablePorts.remove(port);
+    public void cleanupPort(int port, StoredFileInfo info) {
+        availableFiles.remove(port);
         portLastUsed.remove(port);
 
-        if (portInfo != null) {
-            for (StoredFileInfo info : portInfo.files.values()) {
-                try {
-                    cloudinary.uploader().destroy(info.publicId, ObjectUtils.asMap("resource_type", "raw"));
-                    System.out.println("[Cleanup] Deleted from Cloudinary: " + info.publicId);
-                } catch (Exception e) {
-                    System.err.println("[Cleanup Error] Could not delete file: " + e.getMessage());
-                }
-            }
+        try {
+            cloudinary.uploader().destroy(info.publicId, ObjectUtils.asMap("resource_type", "raw"));
+            System.out.println("[Cleanup] Deleted from Cloudinary: " + info.publicId);
+        } catch (Exception e) {
+            System.err.println("[Cleanup Error] Could not delete file: " + e.getMessage());
         }
     }
 
@@ -133,9 +123,19 @@ public class FileSharerService {
         while (iterator.hasNext()) {
             Map.Entry<Integer, Long> entry = iterator.next();
             if (now - entry.getValue() > INACTIVITY_TIMEOUT) {
-                cleanupPort(entry.getKey());
-                iterator.remove();
+                StoredFileInfo info = availableFiles.get(entry.getKey());
+                if (info != null) {
+                    cleanupPort(entry.getKey(), info);
+                    iterator.remove();
+                }
             }
         }
     }
+
+    public StoredFileInfo getStoredValue(int port) {
+        return availableFiles.get(port);
+    }
 }
+
+
+change this fucker
