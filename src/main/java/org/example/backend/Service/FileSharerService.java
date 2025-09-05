@@ -9,13 +9,13 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Iterator;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 public class FileSharerService {
@@ -27,33 +27,40 @@ public class FileSharerService {
     @Autowired
     private Cloudinary cloudinary;
 
-    // Store all info needed to serve file properly
-    private static class StoredFileInfo {
-        String publicId;
-        String originalFilename;
-        String contentType;
+    // Store info for multiple files
+    public static class StoredFileInfo {
+        public static class FileMeta {
+            String publicId;
+            String originalFilename;
+            String contentType;
 
-        StoredFileInfo(String publicId, String originalFilename, String contentType) {
-            this.publicId = publicId;
-            this.originalFilename = originalFilename;
-            this.contentType = contentType;
+            FileMeta(String publicId, String originalFilename, String contentType) {
+                this.publicId = publicId;
+                this.originalFilename = originalFilename;
+                this.contentType = contentType;
+            }
         }
+
+        List<FileMeta> files = new ArrayList<>();
     }
 
-    public int offerFile(MultipartFile file) throws IOException {
-        // Upload file as raw resource type to Cloudinary
-        Map uploadResult = cloudinary.uploader().upload(file.getBytes(),
-                ObjectUtils.asMap(
-                        "resource_type", "raw",
-                        "type", "upload",
-                        "filename_override", file.getOriginalFilename()
-                ));
+    public int offerFiles(List<MultipartFile> files) throws IOException {
+        StoredFileInfo info = new StoredFileInfo();
 
-        String publicId = (String) uploadResult.get("public_id");
-        String originalFilename = file.getOriginalFilename();
-        String contentType = file.getContentType();
+        for (MultipartFile file : files) {
+            Map uploadResult = cloudinary.uploader().upload(file.getBytes(),
+                    ObjectUtils.asMap(
+                            "resource_type", "raw",
+                            "type", "upload",
+                            "filename_override", file.getOriginalFilename()
+                    ));
 
-        StoredFileInfo info = new StoredFileInfo(publicId, originalFilename, contentType);
+            String publicId = (String) uploadResult.get("public_id");
+            String originalFilename = file.getOriginalFilename();
+            String contentType = file.getContentType();
+
+            info.files.add(new StoredFileInfo.FileMeta(publicId, originalFilename, contentType));
+        }
 
         int port;
         while (true) {
@@ -66,49 +73,45 @@ public class FileSharerService {
         return port;
     }
 
-   public byte[] getFileBytesByPort(int port) throws IOException {
-    StoredFileInfo info = availableFiles.get(port);
-    if (info == null) return null;
-
-    // Generate signed URL (no sign() method call)
-  String signedUrl = cloudinary.url()
-    .resourceType("raw")
-    .type("upload")
-    .secure(true)        // <-- add this to generate a signed URL
-    .generate(info.publicId);
-
-
-    URL url = new URL(signedUrl);
-    HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-    connection.setRequestMethod("GET");
-    connection.setDoInput(true);
-    connection.connect();
-
-    try (InputStream inputStream = connection.getInputStream()) {
-        return IOUtils.toByteArray(inputStream);
-    }
-}
-
-
-    public String getFilenameByPort(int port) {
+    public byte[] getFilesAsZip(int port) throws IOException {
         StoredFileInfo info = availableFiles.get(port);
-        return info != null ? info.originalFilename : null;
-    }
+        if (info == null || info.files.isEmpty()) return null;
 
-    public String getContentTypeByPort(int port) {
-        StoredFileInfo info = availableFiles.get(port);
-        return info != null ? info.contentType : null;
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ZipOutputStream zos = new ZipOutputStream(baos);
+
+        for (StoredFileInfo.FileMeta meta : info.files) {
+            String signedUrl = cloudinary.url()
+                    .resourceType("raw")
+                    .type("upload")
+                    .secure(true)
+                    .generate(meta.publicId);
+
+            URL url = new URL(signedUrl);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+
+            try (InputStream in = connection.getInputStream()) {
+                zos.putNextEntry(new ZipEntry(meta.originalFilename));
+                IOUtils.copy(in, zos);
+                zos.closeEntry();
+            }
+        }
+
+        zos.close();
+        return baos.toByteArray();
     }
 
     public void cleanupPort(int port, StoredFileInfo info) {
         availableFiles.remove(port);
         portLastUsed.remove(port);
-
-        try {
-            cloudinary.uploader().destroy(info.publicId, ObjectUtils.asMap("resource_type", "raw"));
-            System.out.println("[Cleanup] Deleted from Cloudinary: " + info.publicId);
-        } catch (Exception e) {
-            System.err.println("[Cleanup Error] Could not delete file: " + e.getMessage());
+        for (StoredFileInfo.FileMeta meta : info.files) {
+            try {
+                cloudinary.uploader().destroy(meta.publicId, ObjectUtils.asMap("resource_type", "raw"));
+                System.out.println("[Cleanup] Deleted: " + meta.publicId);
+            } catch (Exception e) {
+                System.err.println("[Cleanup Error] " + e.getMessage());
+            }
         }
     }
 
@@ -116,7 +119,6 @@ public class FileSharerService {
     public void cleanUpInactivePorts() {
         long now = System.currentTimeMillis();
         Iterator<Map.Entry<Integer, Long>> iterator = portLastUsed.entrySet().iterator();
-
         while (iterator.hasNext()) {
             Map.Entry<Integer, Long> entry = iterator.next();
             if (now - entry.getValue() > INACTIVITY_TIMEOUT) {
@@ -133,4 +135,3 @@ public class FileSharerService {
         return availableFiles.get(port);
     }
 }
-
